@@ -1,8 +1,8 @@
-using System.Collections;
 using System.Collections.Generic;
-using Autohand;
 using UnityEngine;
+using Autohand;
 using Zef.Pool;
+using DG.Tweening;
 
 public class SkillCharging : MonoBehaviour
 {
@@ -10,23 +10,28 @@ public class SkillCharging : MonoBehaviour
     public string swordPoolName = "Sword_Pool";
     public List<Transform> spawnPoints;
 
-    [Header("Charging Settings")]
-    public float delayBeforeFly = 2.5f;
-    public float flySpeed = 5.0f; // Tăng tốc độ bay cho rõ
+    [Header("Targeting Logic")]
+    [Tooltip("Kéo một GameObject cụ thể vào đây để làm mục tiêu cố định (VD: Boss). Nếu để trống, sẽ tự quét.")]
+    public GameObject hardTarget; 
+    
+    [Tooltip("Nếu Hard Target trống, sẽ quét layer này")]
+    public LayerMask autoScanLayer; 
+    public float scanRadius = 5.0f;
+    public float scanDistance = 50f;
 
-    [Header("Visual Effects")]
+    [Header("Timing")]
+    public float delayBeforeFly = 2.0f;
+
+    [Header("Visual")]
     public GameObject chargeObject;
 
-    // --- SAFETY GUARDS (QUAN TRỌNG) ---
-    private float _cooldownTimer = 0f;
-    private const float SPAWN_COOLDOWN = 0.5f; // Chỉ cho phép kích hoạt lại sau 0.5s
-
-    // Internal Variables
     private Grabbable _grabbable;
     private bool _isCharging = false;
-    private bool _isFlying = false;
     private List<GameObject> _activeSwords = new List<GameObject>();
-    private Coroutine _chargeCoroutine;
+    private Sequence _chargeSequence;
+    
+    // Lưu mục tiêu cuối cùng (là GameObject)
+    private GameObject _finalTarget;
 
     public Grabbable Grabbable
     {
@@ -44,44 +49,16 @@ public class SkillCharging : MonoBehaviour
 
     private void Update()
     {
-        // Giảm timer cooldown
-        if (_cooldownTimer > 0) _cooldownTimer -= Time.deltaTime;
-
         if (Grabbable.IsHeld())
         {
-            bool inputPressed = CheckInputButtonA();
-
-            // LOGIC KÍCH HOẠT (Có bảo vệ Cooldown)
-            if (inputPressed)
+            if (CheckInputButtonA())
             {
-                // Chỉ bắt đầu nếu chưa charge VÀ hết thời gian chờ
-                if (!_isCharging && _cooldownTimer <= 0)
-                {
-                    StartChargingSequence();
-                }
-
-                // Xử lý logic khi đang giữ nút
-                if (_isCharging)
-                {
-                    if (_isFlying)
-                    {
-                        HandleSwordsFlying();
-                    }
-                    else
-                    {
-                        KeepSwordsAtSpawnPoints();
-                    }
-                }
+                if (!_isCharging) StartChargingSequence();
+                KeepSwordsAtSpawnPoints();
             }
             else
             {
-                // Nhả nút -> Reset
-                if (_isCharging)
-                {
-                    StopChargingSequence();
-                    // Đặt cooldown để tránh spam nút ngay lập tức
-                    _cooldownTimer = SPAWN_COOLDOWN; 
-                }
+                if (_isCharging) StopChargingSequence();
             }
         }
         else
@@ -93,57 +70,93 @@ public class SkillCharging : MonoBehaviour
     void StartChargingSequence()
     {
         _isCharging = true;
-        _isFlying = false;
-
         if (chargeObject) chargeObject.SetActive(true);
 
-        // Gọi hàm sinh kiếm (Chỉ chạy 1 lần duy nhất tại đây)
+        // 1. Xác định mục tiêu ngay khi bắt đầu
+        DetermineTarget();
+
         SpawnSwords();
 
-        if (_chargeCoroutine != null) StopCoroutine(_chargeCoroutine);
-        _chargeCoroutine = StartCoroutine(WaitAndFly());
-        
-        Debug.Log("Skill Started: Spawning Swords"); // Log để kiểm tra có bị spam không
+        _chargeSequence?.Kill();
+        _chargeSequence = DOTween.Sequence();
+        _chargeSequence.AppendInterval(delayBeforeFly);
+        _chargeSequence.AppendCallback(LaunchAllSwords);
     }
 
     void StopChargingSequence()
     {
         _isCharging = false;
-        _isFlying = false;
-
-        if (_chargeCoroutine != null) StopCoroutine(_chargeCoroutine);
+        _chargeSequence?.Kill();
         if (chargeObject) chargeObject.SetActive(false);
-
         ReturnSwordsToPool();
-        
-        Debug.Log("Skill Stopped: Clearing Swords");
     }
 
-    IEnumerator WaitAndFly()
+    // Logic xác định mục tiêu
+    void DetermineTarget()
     {
-        yield return new WaitForSeconds(delayBeforeFly);
-        _isFlying = true; // Chuyển trạng thái sang bay
+        _finalTarget = null;
+
+        // ƯU TIÊN 1: Nếu có Hard Target gán sẵn trong Inspector -> Dùng luôn
+        if (hardTarget != null && hardTarget.activeInHierarchy)
+        {
+            _finalTarget = hardTarget;
+            // Debug.Log("Using Hard Target: " + _finalTarget.name);
+            return;
+        }
+
+        // ƯU TIÊN 2: Tự động quét (Auto Scan)
+        Transform head = Camera.main.transform;
+        if (PlayerController.Instance != null) head = PlayerController.Instance.head;
+
+        RaycastHit hit;
+        if (Physics.SphereCast(head.position, scanRadius, head.forward, out hit, scanDistance, autoScanLayer))
+        {
+            _finalTarget = hit.collider.gameObject; // Lấy GameObject từ Collider
+            // Debug.Log("Auto Scanned Target: " + _finalTarget.name);
+        }
+    }
+
+    void LaunchAllSwords()
+    {
+        Transform head = Camera.main.transform;
+        if (PlayerController.Instance != null) head = PlayerController.Instance.head;
+        
+        Vector3 defaultDir = head.forward;
+        defaultDir.y = 0; defaultDir.Normalize();
+        Vector3 blindDir = (Quaternion.LookRotation(defaultDir) * Quaternion.Euler(-30, 0, 0)) * Vector3.forward;
+
+        foreach (var swordObj in _activeSwords)
+        {
+            if (swordObj != null)
+            {
+                SwordController ctrl = swordObj.GetComponent<SwordController>();
+                if (ctrl != null)
+                {
+                    // Truyền GameObject Target vào
+                    ctrl.Launch(_finalTarget, blindDir);
+                }
+            }
+        }
+
+        _activeSwords.Clear();
+        _isCharging = false;
+        if (chargeObject) chargeObject.SetActive(false);
     }
 
     void SpawnSwords()
     {
-        // QUAN TRỌNG: Dọn dẹp sạch sẽ trước khi sinh mới để tránh duplicate list
-        ReturnSwordsToPool(); 
-
+        ReturnSwordsToPool();
         if (PoolManager.Instance == null) return;
 
         foreach (var point in spawnPoints)
         {
             if (point == null) continue;
-
-            // Lấy từ Pool
             GameObject sword = PoolManager.Instance.Get(swordPoolName, false);
-            
-            // Bảo vệ: Nếu Pool trả về null hoặc quá tải
+
             if (sword != null)
             {
                 sword.transform.position = point.position;
-                sword.transform.rotation = point.rotation;
+                sword.transform.rotation = Quaternion.Euler(-90, 0, 0);
                 sword.SetActive(true);
                 _activeSwords.Add(sword);
             }
@@ -152,39 +165,23 @@ public class SkillCharging : MonoBehaviour
 
     void KeepSwordsAtSpawnPoints()
     {
-        // Tối ưu vòng lặp: Dùng for thay vì foreach để nhanh hơn
         for (int i = 0; i < _activeSwords.Count; i++)
         {
-            if (_activeSwords[i] != null && i < spawnPoints.Count)
+            if (i < spawnPoints.Count && spawnPoints[i] != null && _activeSwords[i] != null)
             {
                 _activeSwords[i].transform.position = spawnPoints[i].position;
-                _activeSwords[i].transform.rotation = spawnPoints[i].rotation;
-            }
-        }
-    }
-
-    void HandleSwordsFlying()
-    {
-        // Bay lên
-        for (int i = 0; i < _activeSwords.Count; i++)
-        {
-            if (_activeSwords[i] != null)
-            {
-                _activeSwords[i].transform.Translate(Vector3.up * flySpeed * Time.deltaTime, Space.World);
+                _activeSwords[i].transform.rotation = Quaternion.Euler(-90, 0, 0);
             }
         }
     }
 
     void ReturnSwordsToPool()
     {
-        for (int i = 0; i < _activeSwords.Count; i++)
+        foreach (var sword in _activeSwords)
         {
-            if (_activeSwords[i] != null)
-            {
-                _activeSwords[i].SetActive(false);
-            }
+            if (sword != null) sword.SetActive(false);
         }
-        _activeSwords.Clear(); // Xóa sạch list tham chiếu
+        _activeSwords.Clear();
     }
 
     private bool CheckInputButtonA()

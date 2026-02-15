@@ -186,9 +186,19 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: be532e7d99aa78b4180d3fb41883fe5c, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  chargeObject: {fileID: 3683485715837560428}
   swordPoolName: Sword_Pool
+  fireworkPoolName: Firework_Pool
   spawnPoints: []
+  delayBeforeFly: 2.5
+  flyDuration: 2
+  startSpeed: 0
+  maxFlySpeed: 20
+  accelerationTime: 0.5
+  accelerationEase: 8
+  spawnRotation: {x: -90, y: 0, z: 0}
+  flyPitchAngle: -45
+  additionalYaw: 90
+  chargeObject: {fileID: 3683485715837560428}
 --- !u!1001 &3683485715837688182
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -203,7 +213,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 147226, guid: 4d496338295339f4ab150256f9d9f4b7, type: 3}
       propertyPath: m_IsActive
-      value: 0
+      value: 1
       objectReference: {fileID: 0}
     - target: {fileID: 491034, guid: 4d496338295339f4ab150256f9d9f4b7, type: 3}
       propertyPath: m_LocalScale.x
@@ -283,6 +293,10 @@ PrefabInstance:
     - target: {fileID: -6689036041284674117, guid: 749f027d834ef1e43ad80e475677c28a, type: 3}
       propertyPath: m_Name
       value: ice_sword
+      objectReference: {fileID: 0}
+    - target: {fileID: -6689036041284674117, guid: 749f027d834ef1e43ad80e475677c28a, type: 3}
+      propertyPath: m_IsActive
+      value: 1
       objectReference: {fileID: 0}
     - target: {fileID: 2774220344278030320, guid: 749f027d834ef1e43ad80e475677c28a, type: 3}
       propertyPath: m_LocalPosition.x
