@@ -187,18 +187,16 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   swordPoolName: Sword_Pool
-  fireworkPoolName: Firework_Pool
   spawnPoints: []
+  hardTarget: {fileID: 0}
+  autoScanLayer:
+    serializedVersion: 2
+    m_Bits: 0
+  scanRadius: 10
+  scanDistance: 50
   delayBeforeFly: 2.5
-  flyDuration: 2
-  startSpeed: 0
-  maxFlySpeed: 20
-  accelerationTime: 0.5
-  accelerationEase: 8
-  spawnRotation: {x: -90, y: 0, z: 0}
-  flyPitchAngle: -45
-  additionalYaw: 90
   chargeObject: {fileID: 3683485715837560428}
+  fireworksInScene: []
 --- !u!1001 &3683485715837688182
 PrefabInstance:
   m_ObjectHideFlags: 0
